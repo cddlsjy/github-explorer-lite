@@ -1,0 +1,265 @@
+基于完整项目的修改方案（含实际布局文件）
+
+根据您提供的完整项目文件（包含确切的 fragment_file_tree.xml 布局），下面给出精确的代码修改。
+
+1. 修改 AndroidManifest.xml —— 防止旋转重建 Activity
+
+在 RepoDetailActivity 中添加 configChanges 属性，使屏幕旋转时不销毁重建，从而让 Fragment 能响应 onConfigurationChanged。
+
+```xml
+<activity
+    android:name=".ui.repodetail.RepoDetailActivity"
+    android:configChanges="orientation|screenSize|keyboardHidden"
+    android:exported="false" />
+```
+
+2. 修改布局文件 fragment_file_tree.xml
+
+给根 LinearLayout 添加一个 id（如果还没有），以便在代码中动态调整。实际上现有布局中根元素没有 id，需要加上：
+
+```xml
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+```
+
+完整修改后的 fragment_file_tree.xml（仅增加 android:id="@+id/rootLayout"，其余保持原样）：
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- 下载仓库按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:gravity="center_vertical">
+
+        <ImageButton
+            android:id="@+id/downloadRepoButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_save"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Download repository as zip"
+            android:scaleType="centerInside" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Download Repo"
+            android:textSize="14sp"
+            android:textColor="@android:color/darker_gray" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/darker_gray" />
+
+    <!-- 文件树区域（可折叠） -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ExpandableListView
+            android:id="@+id/expandableTreeView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@android:color/darker_gray"
+            android:dividerHeight="1dp"
+            android:childDivider="@android:color/transparent"
+            android:groupIndicator="@android:drawable/arrow_down_float" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- 文件内容预览区域 -->
+    <ScrollView
+        android:id="@+id/fileContentScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#fafafa"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/fileContentTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textIsSelectable="true" />
+    </ScrollView>
+
+    <!-- 初始提示 -->
+    <TextView
+        android:id="@+id/emptyHintText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Select a file to preview"
+        android:textColor="@android:color/darker_gray"
+        android:visibility="gone" />
+</LinearLayout>
+```
+
+3. 修改 FileTreeFragment.kt
+
+在 Fragment 中添加方向自适应逻辑。
+
+3.1 添加必要的成员变量
+
+```kotlin
+private lateinit var rootLayout: LinearLayout
+```
+
+3.2 修改 onCreateView 获取根布局引用
+
+```kotlin
+override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+    _binding = FragmentFileTreeBinding.inflate(inflater, container, false)
+    rootLayout = binding.root.findViewById(R.id.rootLayout)
+    return binding.root
+}
+```
+
+3.3 在 onViewCreated 末尾调用布局调整
+
+```kotlin
+override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    binding.downloadRepoButton.setOnClickListener { downloadRepo() }
+    loadRepoTree()
+    // 根据当前方向调整布局
+    updateLayoutOrientation()
+}
+```
+
+3.4 重写 onConfigurationChanged
+
+```kotlin
+override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    updateLayoutOrientation()
+}
+```
+
+3.5 实现 updateLayoutOrientation() 方法
+
+```kotlin
+private fun updateLayoutOrientation() {
+    if (!::rootLayout.isInitialized) return
+    val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // 1. 调整根布局方向
+    rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+
+    // 2. 获取需要动态调整的两个主要子视图：文件树容器 和 内容预览ScrollView
+    val treeContainer = binding.root.findViewById<FrameLayout>(R.id.expandableTreeView).parent as View // 实际上 expandableTreeView 的父容器是 FrameLayout，我们需要调整这个 FrameLayout
+    // 更精确的做法：直接获取 expandableTreeView 的父容器（即包裹它的 FrameLayout）和 fileContentScrollView
+    val treeFrame = binding.expandableTreeView.parent as View
+    val scrollView = binding.fileContentScrollView
+
+    val treeLayoutParams = treeFrame.layoutParams as LinearLayout.LayoutParams
+    val scrollLayoutParams = scrollView.layoutParams as LinearLayout.LayoutParams
+
+    if (isLandscape) {
+        // 横屏：左右各占一半宽度，高度 MATCH_PARENT
+        treeLayoutParams.width = 0
+        treeLayoutParams.height = LinearLayout.LayoutParams.MATCH_PARENT
+        treeLayoutParams.weight = 1f
+
+        scrollLayoutParams.width = 0
+        scrollLayoutParams.height = LinearLayout.LayoutParams.MATCH_PARENT
+        scrollLayoutParams.weight = 1f
+    } else {
+        // 竖屏：上下各占一半高度，宽度 MATCH_PARENT
+        treeLayoutParams.width = LinearLayout.LayoutParams.MATCH_PARENT
+        treeLayoutParams.height = 0
+        treeLayoutParams.weight = 1f
+
+        scrollLayoutParams.width = LinearLayout.LayoutParams.MATCH_PARENT
+        scrollLayoutParams.height = 0
+        scrollLayoutParams.weight = 1f
+    }
+    treeFrame.layoutParams = treeLayoutParams
+    scrollView.layoutParams = scrollLayoutParams
+}
+```
+
+注意：上述代码中 treeFrame 获取的是 ExpandableListView 的父容器（FrameLayout），因为该 FrameLayout 才是直接位于根 LinearLayout 下的子视图，调整它才能生效。如果布局结构有变化，请确保获取的是根 LinearLayout 的直接子视图。
+
+更稳妥的方式是给 FrameLayout 也加上 id，然后直接通过 binding 获取。建议修改布局文件，给包裹 ExpandableListView 的 FrameLayout 添加 android:id="@+id/treeContainer"，然后代码中直接使用 binding.treeContainer。
+
+优化建议：给树容器添加 ID
+
+在 fragment_file_tree.xml 中修改：
+
+```xml
+<FrameLayout
+    android:id="@+id/treeContainer"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1">
+    ...
+</FrameLayout>
+```
+
+然后 updateLayoutOrientation() 可以简化为：
+
+```kotlin
+private fun updateLayoutOrientation() {
+    if (!::rootLayout.isInitialized) return
+    val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+
+    val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
+    val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
+
+    if (isLandscape) {
+        treeParams.width = 0
+        treeParams.height = LinearLayout.LayoutParams.MATCH_PARENT
+        treeParams.weight = 1f
+
+        scrollParams.width = 0
+        scrollParams.height = LinearLayout.LayoutParams.MATCH_PARENT
+        scrollParams.weight = 1f
+    } else {
+        treeParams.width = LinearLayout.LayoutParams.MATCH_PARENT
+        treeParams.height = 0
+        treeParams.weight = 1f
+
+        scrollParams.width = LinearLayout.LayoutParams.MATCH_PARENT
+        scrollParams.height = 0
+        scrollParams.weight = 1f
+    }
+    binding.treeContainer.layoutParams = treeParams
+    binding.fileContentScrollView.layoutParams = scrollParams
+}
+```
+
+4. 最终效果
+
+· 竖屏：目录树在上，文件预览在下（与原行为一致）。
+· 横屏：目录树在左，文件预览在右，平分宽度。
+· 屏幕旋转时自动切换布局，且内容不会丢失。
+
+按照以上步骤修改后，编译运行即可体验横屏左右分屏的目录树预览界面。
