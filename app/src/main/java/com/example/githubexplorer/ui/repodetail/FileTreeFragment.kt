@@ -70,30 +70,6 @@ class FileTreeFragment : Fragment() {
 
         rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
 
-        // 获取顶部栏和分割线
-        val topBar = rootLayout.getChildAt(0) as? LinearLayout
-        val divider = rootLayout.getChildAt(1) as? View
-
-        if (isLandscape) {
-            (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.WRAP_CONTENT
-                height = LinearLayout.LayoutParams.MATCH_PARENT
-            }
-            (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.WRAP_CONTENT
-                height = LinearLayout.LayoutParams.MATCH_PARENT
-            }
-        } else {
-            (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = LinearLayout.LayoutParams.WRAP_CONTENT
-            }
-            (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = LinearLayout.LayoutParams.WRAP_CONTENT
-            }
-        }
-
         val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
         val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
 
@@ -116,11 +92,6 @@ class FileTreeFragment : Fragment() {
         }
         binding.treeContainer.layoutParams = treeParams
         binding.fileContentScrollView.layoutParams = scrollParams
-
-        // 调整空提示文本的宽度（避免影响布局）
-        (binding.emptyHintText.layoutParams as? LinearLayout.LayoutParams)?.apply {
-            width = if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT
-        }
     }
 
     private fun downloadRepo() {
@@ -174,7 +145,10 @@ class FileTreeFragment : Fragment() {
                 val branch = repoInfo.defaultBranch ?: "main"
                 activity.branch = branch
 
-                val treeResp = RetrofitProvider.api.getTree(owner, repo, branch, 1)
+                val branchRef = RetrofitProvider.api.getBranchRef(owner, repo, branch)
+                val commitSha = branchRef.`object`.sha
+
+                val treeResp = RetrofitProvider.api.getTree(owner, repo, commitSha, 1)
                 treeNodes.clear()
                 treeNodes.addAll(treeResp.tree)
                 buildTree()
@@ -187,12 +161,9 @@ class FileTreeFragment : Fragment() {
     }
 
     private fun buildTree() {
-        // 1. 构建完整的树结构
-        val pathToEntry = treeNodes.associateBy { it.path }
         val rootGroups = mutableListOf<TreeAdapter.TreeGroup>()
         val processed = mutableSetOf<String>()
 
-        // 找出所有根节点（path 中不包含 "/"）
         for (entry in treeNodes) {
             if (!entry.path.contains("/")) {
                 val group = TreeAdapter.TreeGroup(
@@ -206,7 +177,6 @@ class FileTreeFragment : Fragment() {
             }
         }
 
-        // 递归填充子节点
         fun addChildren(group: TreeAdapter.TreeGroup) {
             val prefix = group.path + "/"
             treeNodes.filter { it.path.startsWith(prefix) && !processed.contains(it.path) }.forEach { child ->
@@ -226,13 +196,11 @@ class FileTreeFragment : Fragment() {
 
         rootGroups.filter { it.isDirectory }.forEach { addChildren(it) }
 
-        // 2. 创建适配器
         treeAdapter = TreeAdapter(requireContext(), rootGroups) { path ->
             loadFileContent(path)
         }
         binding.expandableTreeView.setAdapter(treeAdapter)
 
-        // 3. 点击子节点（文件夹内的文件）
         binding.expandableTreeView.setOnChildClickListener { _, _, groupPos, childPos, _ ->
             val group = rootGroups[groupPos]
             if (childPos < group.children.size) {
@@ -245,18 +213,16 @@ class FileTreeFragment : Fragment() {
             false
         }
 
-        // 4. 点击根节点（根级文件）
         binding.expandableTreeView.setOnGroupClickListener { _, _, groupPos, _ ->
             val group = rootGroups[groupPos]
             if (!group.isDirectory) {
                 loadFileContent(group.path)
-                true  // 消费点击，不展开
+                true
             } else {
-                false // 目录，允许正常展开
+                false
             }
         }
 
-        // 5. 自动加载 README.md
         val readmeEntry = treeNodes.firstOrNull {
             it.type == "blob" && it.path.equals("README.md", ignoreCase = true)
         }
