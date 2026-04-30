@@ -1,256 +1,107 @@
-您的分析非常正确！问题根源是：横屏时根布局变为水平方向，但顶部按钮栏和分割线仍持有 match_parent 宽度，导致它们占据了所有可用宽度，使得树容器和预览区域宽度为0，从而无法显示。
+以下是针对“github-explorer-lite-main (1)-AI.txt”（第一个版本）中 FileTreeFragment.kt 的具体修改指南，可直接用于自动化工具或手动修改。
 
-以下是精确的修复方案，只需修改 FileTreeFragment.kt 中的 updateLayoutOrientation() 方法，将顶部栏和分割线在横屏时的宽度改为 WRAP_CONTENT，并适当调整。
+---
 
-修复后的代码 (FileTreeFragment.kt 片段)
+修改文件
 
-替换现有的 updateLayoutOrientation() 方法：
+app/src/main/java/com/example/githubexplorer/ui/repodetail/FileTreeFragment.kt
+
+修改位置
+
+loadRepoTree() 函数内部（约第 113-120 行）
+
+---
+
+当前代码（错误）
 
 ```kotlin
-private fun updateLayoutOrientation() {
-    if (!::rootLayout.isInitialized) return
-    val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+val branchRef = RetrofitProvider.api.getBranchRef(owner, repo, branch)
+val commitSha = branchRef.`object`.sha
 
-    // 1. 调整根布局方向
-    rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+val treeResp = RetrofitProvider.api.getTree(owner, repo, commitSha, 1)
+```
 
-    // 2. 获取顶部按钮栏 (索引0) 和分割线 (索引1)，动态调整其宽度
-    val topBar = rootLayout.getChildAt(0) as? LinearLayout
-    val divider = rootLayout.getChildAt(1) as? View
+问题：
+getBranchRef 返回的 object.sha 是 commit SHA，而 getTree API 需要 tree SHA 或分支名。直接传 commit SHA 会导致 404，从而进入 catch 块，目录树无法构建。
 
-    if (isLandscape) {
-        // 横屏：顶部栏和分割线宽度设为 WRAP_CONTENT，高度 MATCH_PARENT
-        (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-            width = LinearLayout.LayoutParams.WRAP_CONTENT
-            height = LinearLayout.LayoutParams.MATCH_PARENT
+---
+
+正确做法
+
+直接使用已经获得的分支名 branch 调用 getTree，因为 GitHub API 接受分支名自动解析到最新 tree SHA。
+
+---
+
+修改方案（精准替换）
+
+步骤 1：删除以下两行
+
+```kotlin
+val branchRef = RetrofitProvider.api.getBranchRef(owner, repo, branch)
+val commitSha = branchRef.`object`.sha
+```
+
+步骤 2：修改 getTree 调用参数
+
+将
+
+```kotlin
+val treeResp = RetrofitProvider.api.getTree(owner, repo, commitSha, 1)
+```
+
+改为
+
+```kotlin
+val treeResp = RetrofitProvider.api.getTree(owner, repo, branch, 1)
+```
+
+---
+
+修改后的完整 loadRepoTree() 函数（可直接替换）
+
+```kotlin
+private fun loadRepoTree() {
+    val activity = requireActivity() as RepoDetailActivity
+    val owner = activity.owner
+    val repo = activity.repo
+    binding.progressBar.visibility = View.VISIBLE
+    lifecycleScope.launch {
+        try {
+            val repoInfo = RetrofitProvider.api.getRepo(owner, repo)
+            val branch = repoInfo.defaultBranch ?: "main"
+            activity.branch = branch
+
+            // 直接使用分支名请求 tree，不再通过 getBranchRef 获取 commit SHA
+            val treeResp = RetrofitProvider.api.getTree(owner, repo, branch, 1)
+            treeNodes.clear()
+            treeNodes.addAll(treeResp.tree)
+            buildTree()
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to load tree: ${e.message}", Toast.LENGTH_LONG).show()
+        } finally {
+            binding.progressBar.visibility = View.GONE
         }
-        (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-            width = LinearLayout.LayoutParams.WRAP_CONTENT
-            height = LinearLayout.LayoutParams.MATCH_PARENT
-        }
-    } else {
-        // 竖屏：恢复原始参数（宽度 MATCH_PARENT，高度 WRAP_CONTENT）
-        (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-            width = LinearLayout.LayoutParams.MATCH_PARENT
-            height = LinearLayout.LayoutParams.WRAP_CONTENT
-        }
-        (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-            width = LinearLayout.LayoutParams.MATCH_PARENT
-            height = LinearLayout.LayoutParams.WRAP_CONTENT
-        }
-    }
-
-    // 3. 调整树容器和内容预览区域的布局参数
-    val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
-    val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
-
-    if (isLandscape) {
-        // 横屏：左右平分宽度，高度填满
-        treeParams.width = 0
-        treeParams.height = LinearLayout.LayoutParams.MATCH_PARENT
-        treeParams.weight = 1f
-
-        scrollParams.width = 0
-        scrollParams.height = LinearLayout.LayoutParams.MATCH_PARENT
-        scrollParams.weight = 1f
-    } else {
-        // 竖屏：上下平分高度，宽度填满
-        treeParams.width = LinearLayout.LayoutParams.MATCH_PARENT
-        treeParams.height = 0
-        treeParams.weight = 1f
-
-        scrollParams.width = LinearLayout.LayoutParams.MATCH_PARENT
-        scrollParams.height = 0
-        scrollParams.weight = 1f
-    }
-
-    binding.treeContainer.layoutParams = treeParams
-    binding.fileContentScrollView.layoutParams = scrollParams
-
-    // 4. （可选）确保空提示文本在横屏时宽度也为 WRAP_CONTENT，避免影响布局
-    val emptyHint = binding.emptyHintText
-    if (isLandscape) {
-        (emptyHint.layoutParams as? LinearLayout.LayoutParams)?.width = LinearLayout.LayoutParams.WRAP_CONTENT
-    } else {
-        (emptyHint.layoutParams as? LinearLayout.LayoutParams)?.width = LinearLayout.LayoutParams.MATCH_PARENT
     }
 }
 ```
 
-为什么需要修改顶部栏和分割线？
+---
 
-· 竖屏时：根布局为 VERTICAL，顶部栏和分割线宽度 MATCH_PARENT 正常占满整行。
-· 横屏时：根布局变为 HORIZONTAL，所有子视图水平排列。如果顶部栏和分割线仍保持 MATCH_PARENT，它们会尝试占满整个父容器的宽度，这实际上等同于“撑满整个水平空间”，导致后续的树容器和预览区域分不到任何宽度（宽度为0），从而看不见。
+其他说明
 
-通过将它们的宽度改为 WRAP_CONTENT，它们只会占用自身内容所需的最小宽度（例如按钮文字宽度），剩下的水平空间全部由 weight=1 的树容器和预览区域平分。
+· 不需要删除 GitHubApi.kt 中的 getBranchRef 接口定义，其他代码可能仍在使用（如 ActionsFragment 未用到则不影响），保留无碍。
+· 修改后横竖屏均可正常显示文件树。
+· 若 branch 变量名与其他作用域冲突，此处仅更换参数值，无其他影响。
 
-其他注意事项
+---
 
-1. 确保布局中子视图索引正确：当前 fragment_file_tree.xml 中子视图顺序为：
-   · 索引0：LinearLayout（下载按钮栏）
-   · 索引1：View（分割线）
-   · 索引2：FrameLayout (treeContainer)
-   · 索引3：ScrollView (fileContentScrollView)
-   · 索引4：TextView (emptyHintText)
-   上述代码中使用 getChildAt(0) 和 getChildAt(1) 获取顶部栏和分割线，顺序正确。
-2. 横屏时的视觉优化：顶部按钮栏在横屏时变成竖直排列（因为其内部是水平线性布局，且宽度变为 WRAP_CONTENT），按钮会垂直堆叠，这可能会显得拥挤。如果希望按钮栏仍然水平排列，可以保持其宽度为 MATCH_PARENT 但将其移出水平布局（例如使用 Toolbar 或放在独立的 View 中）。不过对于当前简单需求，WRAP_CONTENT 已足够，用户仍然可以点击按钮。
-3. 测试：修改后重新编译运行，横屏时应看到左侧目录树、右侧文件预览，两者平分宽度，顶部按钮栏紧凑地显示在左侧最上方。
+验证步骤（供测试用）
 
-完整文件替换建议
+1. 编译运行应用。
+2. 登录后选择一个仓库。
+3. 确保“Files”标签下的 ExpandableListView 能显示目录结构并可展开/点击。
+4. 旋转屏幕，目录树仍正常显示（无崩溃或空白）。
 
-如果您希望直接替换整个 FileTreeFragment.kt，可使用以下完整代码（基于您提供的文件，仅修改 updateLayoutOrientation() 并完善导入）：
+---
 
-```kotlin
-package com.example.githubexplorer.ui.repodetail
-
-import android.content.res.Configuration
-import android.net.Uri
-import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.Toast
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
-import com.example.githubexplorer.databinding.FragmentFileTreeBinding
-import com.example.githubexplorer.models.TreeEntry
-import com.example.githubexplorer.network.GitHubHttpClient
-import com.example.githubexplorer.network.RetrofitProvider
-import com.example.githubexplorer.util.PreferenceHelper
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.Request
-
-class FileTreeFragment : Fragment() {
-    private var _binding: FragmentFileTreeBinding? = null
-    private val binding get() = _binding!!
-    private lateinit var rootLayout: LinearLayout
-    private val treeNodes = mutableListOf<TreeEntry>()
-    private lateinit var treeAdapter: TreeAdapter
-
-    private lateinit var createDocumentLauncher: ActivityResultLauncher<String>
-    private var pendingDownloadUrl: String? = null
-    private var pendingDownloadName: String? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
-            uri?.let {
-                pendingDownloadUrl?.let { url ->
-                    lifecycleScope.launch {
-                        performActualDownload(url, uri)
-                    }
-                }
-            }
-        }
-    }
-
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        _binding = FragmentFileTreeBinding.inflate(inflater, container, false)
-        rootLayout = binding.root as LinearLayout
-        return binding.root
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        binding.downloadRepoButton.setOnClickListener { downloadRepo() }
-        loadRepoTree()
-        updateLayoutOrientation()
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        updateLayoutOrientation()
-    }
-
-    private fun updateLayoutOrientation() {
-        if (!::rootLayout.isInitialized) return
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-        rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-
-        // 获取顶部栏和分割线
-        val topBar = rootLayout.getChildAt(0) as? LinearLayout
-        val divider = rootLayout.getChildAt(1) as? View
-
-        if (isLandscape) {
-            (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.WRAP_CONTENT
-                height = LinearLayout.LayoutParams.MATCH_PARENT
-            }
-            (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.WRAP_CONTENT
-                height = LinearLayout.LayoutParams.MATCH_PARENT
-            }
-        } else {
-            (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = LinearLayout.LayoutParams.WRAP_CONTENT
-            }
-            (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = LinearLayout.LayoutParams.WRAP_CONTENT
-            }
-        }
-
-        val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
-        val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
-
-        if (isLandscape) {
-            treeParams.width = 0
-            treeParams.height = LinearLayout.LayoutParams.MATCH_PARENT
-            treeParams.weight = 1f
-
-            scrollParams.width = 0
-            scrollParams.height = LinearLayout.LayoutParams.MATCH_PARENT
-            scrollParams.weight = 1f
-        } else {
-            treeParams.width = LinearLayout.LayoutParams.MATCH_PARENT
-            treeParams.height = 0
-            treeParams.weight = 1f
-
-            scrollParams.width = LinearLayout.LayoutParams.MATCH_PARENT
-            scrollParams.height = 0
-            scrollParams.weight = 1f
-        }
-        binding.treeContainer.layoutParams = treeParams
-        binding.fileContentScrollView.layoutParams = scrollParams
-
-        // 调整空提示文本的宽度（避免影响布局）
-        (binding.emptyHintText.layoutParams as? LinearLayout.LayoutParams)?.apply {
-            width = if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT
-        }
-    }
-
-    private fun downloadRepo() { /* 保持原有代码不变 */ }
-
-    private suspend fun performActualDownload(url: String, fileUri: Uri) { /* 保持原有代码不变 */ }
-
-    private fun loadRepoTree() { /* 保持原有代码不变 */ }
-
-    private fun buildTree() { /* 保持原有代码不变 */ }
-
-    private fun loadFileContent(path: String) { /* 保持原有代码不变 */ }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
-}
-```
-
-验证步骤
-
-1. 应用修改后重新编译运行。
-2. 进入任意仓库的 Files 标签页，确保竖屏时上下排列正常。
-3. 旋转屏幕至横屏，应看到：
-   · 左侧：目录树（文件列表）
-   · 右侧：文件预览区域（如果之前已选择文件则显示内容，否则空白）
-   · 顶部按钮栏（下载Repo按钮）紧凑地显示在左上方。
-4. 如果仍然空白，请检查 Logcat 是否有错误，并确保 treeAdapter 已成功设置（数据加载正常）。
-
-该修复彻底解决了横屏下由于 match_parent 抢占空间导致的空白问题。
+按上述改动操作即可完全修复目录树不显示的问题。
