@@ -25,7 +25,7 @@ import okhttp3.Request
 class FileTreeFragment : Fragment() {
     private var _binding: FragmentFileTreeBinding? = null
     private val binding get() = _binding!!
-    private lateinit var rootLayout: LinearLayout
+    private lateinit var contentSplitLayout: LinearLayout
     private val treeNodes = mutableListOf<TreeEntry>()
     private lateinit var treeAdapter: TreeAdapter
 
@@ -48,7 +48,7 @@ class FileTreeFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentFileTreeBinding.inflate(inflater, container, false)
-        rootLayout = binding.root as LinearLayout
+        contentSplitLayout = binding.contentSplitLayout
         return binding.root
     }
 
@@ -65,10 +65,10 @@ class FileTreeFragment : Fragment() {
     }
 
     private fun updateLayoutOrientation() {
-        if (!::rootLayout.isInitialized) return
+        if (!::contentSplitLayout.isInitialized) return
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-        rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        contentSplitLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
 
         val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
         val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
