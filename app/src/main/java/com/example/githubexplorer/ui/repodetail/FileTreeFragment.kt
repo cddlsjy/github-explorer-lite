@@ -174,10 +174,7 @@ class FileTreeFragment : Fragment() {
                 val branch = repoInfo.defaultBranch ?: "main"
                 activity.branch = branch
 
-                val branchRef = RetrofitProvider.api.getBranchRef(owner, repo, branch)
-                val commitSha = branchRef.`object`.sha
-
-                val treeResp = RetrofitProvider.api.getTree(owner, repo, commitSha, 1)
+                val treeResp = RetrofitProvider.api.getTree(owner, repo, branch, 1)
                 treeNodes.clear()
                 treeNodes.addAll(treeResp.tree)
                 buildTree()
