@@ -70,6 +70,30 @@ class FileTreeFragment : Fragment() {
 
         rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
 
+        // 获取顶部栏和分割线
+        val topBar = rootLayout.getChildAt(0) as? LinearLayout
+        val divider = rootLayout.getChildAt(1) as? View
+
+        if (isLandscape) {
+            (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
+                width = LinearLayout.LayoutParams.WRAP_CONTENT
+                height = LinearLayout.LayoutParams.MATCH_PARENT
+            }
+            (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
+                width = LinearLayout.LayoutParams.WRAP_CONTENT
+                height = LinearLayout.LayoutParams.MATCH_PARENT
+            }
+        } else {
+            (topBar?.layoutParams as? LinearLayout.LayoutParams)?.apply {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                height = LinearLayout.LayoutParams.WRAP_CONTENT
+            }
+            (divider?.layoutParams as? LinearLayout.LayoutParams)?.apply {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                height = LinearLayout.LayoutParams.WRAP_CONTENT
+            }
+        }
+
         val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
         val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
 
@@ -92,6 +116,11 @@ class FileTreeFragment : Fragment() {
         }
         binding.treeContainer.layoutParams = treeParams
         binding.fileContentScrollView.layoutParams = scrollParams
+
+        // 调整空提示文本的宽度（避免影响布局）
+        (binding.emptyHintText.layoutParams as? LinearLayout.LayoutParams)?.apply {
+            width = if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT
+        }
     }
 
     private fun downloadRepo() {
