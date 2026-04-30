@@ -1,63 +1,64 @@
-以下是针对“github-explorer-lite-main (1)-AI.txt”（第一个版本）中 FileTreeFragment.kt 的具体修改指南，可直接用于自动化工具或手动修改。
+好的，以下是一份可直接交给 Trae 执行的详细修改大纲，整合了专家版 API 修正和横竖屏布局适配，确保目录树在横竖屏下都能正常显示。
 
 ---
 
-修改文件
+📁 修改大纲：GitHub Explorer 目录树横竖屏适配 + API 优化
 
-app/src/main/java/com/example/githubexplorer/ui/repodetail/FileTreeFragment.kt
+一、修改 AndroidManifest.xml
 
-修改位置
+文件路径：app/src/main/AndroidManifest.xml
 
-loadRepoTree() 函数内部（约第 113-120 行）
+操作：找到 RepoDetailActivity 的 <activity> 标签，添加 android:configChanges 属性（如果已有则跳过）。
+
+替换为：
+
+```xml
+<activity
+    android:name=".ui.repodetail.RepoDetailActivity"
+    android:configChanges="orientation|screenSize|keyboardHidden"
+    android:exported="false" />
+```
 
 ---
 
-当前代码（错误）
+二、修改布局文件 fragment_file_tree.xml
+
+文件路径：app/src/main/res/layout/fragment_file_tree.xml
+
+操作：无需修改（已经包含 rootLayout、treeContainer 等必要 id），但请确认根布局已添加 android:id="@+id/rootLayout"。
+
+检查点：确保存在以下 id：
+
+· @+id/rootLayout
+· @+id/treeContainer
+· @+id/expandableTreeView
+· @+id/fileContentScrollView
+· @+id/emptyHintText
+
+---
+
+三、修改 FileTreeFragment.kt
+
+文件路径：app/src/main/java/com/example/githubexplorer/ui/repodetail/FileTreeFragment.kt
+
+3.1 优化 loadRepoTree()（专家版修正）
+
+定位：loadRepoTree() 函数内部，找到以下代码块（约第 113-120 行）：
 
 ```kotlin
 val branchRef = RetrofitProvider.api.getBranchRef(owner, repo, branch)
 val commitSha = branchRef.`object`.sha
-
 val treeResp = RetrofitProvider.api.getTree(owner, repo, commitSha, 1)
 ```
 
-问题：
-getBranchRef 返回的 object.sha 是 commit SHA，而 getTree API 需要 tree SHA 或分支名。直接传 commit SHA 会导致 404，从而进入 catch 块，目录树无法构建。
-
----
-
-正确做法
-
-直接使用已经获得的分支名 branch 调用 getTree，因为 GitHub API 接受分支名自动解析到最新 tree SHA。
-
----
-
-修改方案（精准替换）
-
-步骤 1：删除以下两行
+替换为（直接使用分支名请求 tree）：
 
 ```kotlin
-val branchRef = RetrofitProvider.api.getBranchRef(owner, repo, branch)
-val commitSha = branchRef.`object`.sha
-```
-
-步骤 2：修改 getTree 调用参数
-
-将
-
-```kotlin
-val treeResp = RetrofitProvider.api.getTree(owner, repo, commitSha, 1)
-```
-
-改为
-
-```kotlin
+// 直接使用分支名请求 tree，不再通过 getBranchRef
 val treeResp = RetrofitProvider.api.getTree(owner, repo, branch, 1)
 ```
 
----
-
-修改后的完整 loadRepoTree() 函数（可直接替换）
+完整替换后的 loadRepoTree() 函数（可直接复制替换原函数）：
 
 ```kotlin
 private fun loadRepoTree() {
@@ -85,23 +86,133 @@ private fun loadRepoTree() {
 }
 ```
 
+3.2 完善 updateLayoutOrientation()（横竖屏适配）
+
+定位：找到 updateLayoutOrientation() 函数（如果没有则新增）。
+
+完整替换为以下代码（处理顶部栏、分割线、树容器和内容预览区域）：
+
+```kotlin
+private fun updateLayoutOrientation() {
+    if (!::rootLayout.isInitialized) return
+    val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // 1. 调整根布局方向
+    rootLayout.orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+
+    // 2. 处理顶部按钮栏（索引0）和分割线（索引1）
+    val topBar = rootLayout.getChildAt(0)
+    val divider = rootLayout.getChildAt(1)
+
+    if (isLandscape) {
+        (topBar.layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.WRAP_CONTENT
+            height = LinearLayout.LayoutParams.MATCH_PARENT
+            weight = 0f
+        }
+        (divider.layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.WRAP_CONTENT
+            height = LinearLayout.LayoutParams.MATCH_PARENT
+            weight = 0f
+        }
+    } else {
+        (topBar.layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.MATCH_PARENT
+            height = LinearLayout.LayoutParams.WRAP_CONTENT
+            weight = 0f
+        }
+        (divider.layoutParams as LinearLayout.LayoutParams).apply {
+            width = LinearLayout.LayoutParams.MATCH_PARENT
+            height = LinearLayout.LayoutParams.WRAP_CONTENT
+            weight = 0f
+        }
+    }
+
+    // 3. 调整树容器和内容预览区域
+    val treeParams = binding.treeContainer.layoutParams as LinearLayout.LayoutParams
+    val scrollParams = binding.fileContentScrollView.layoutParams as LinearLayout.LayoutParams
+
+    if (isLandscape) {
+        treeParams.width = 0
+        treeParams.height = LinearLayout.LayoutParams.MATCH_PARENT
+        treeParams.weight = 1f
+
+        scrollParams.width = 0
+        scrollParams.height = LinearLayout.LayoutParams.MATCH_PARENT
+        scrollParams.weight = 1f
+    } else {
+        treeParams.width = LinearLayout.LayoutParams.MATCH_PARENT
+        treeParams.height = 0
+        treeParams.weight = 1f
+
+        scrollParams.width = LinearLayout.LayoutParams.MATCH_PARENT
+        scrollParams.height = 0
+        scrollParams.weight = 1f
+    }
+    binding.treeContainer.layoutParams = treeParams
+    binding.fileContentScrollView.layoutParams = scrollParams
+
+    // 4. 调整空提示文本
+    (binding.emptyHintText.layoutParams as LinearLayout.LayoutParams).apply {
+        width = if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT
+        weight = 0f
+    }
+
+    // 5. 请求重新布局
+    rootLayout.requestLayout()
+}
+```
+
+3.3 确保在 onViewCreated 和 onConfigurationChanged 中调用
+
+定位：onViewCreated 末尾添加调用（如果已有则保留）：
+
+```kotlin
+override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    binding.downloadRepoButton.setOnClickListener { downloadRepo() }
+    loadRepoTree()
+    updateLayoutOrientation()   // 添加这一行
+}
+```
+
+定位：重写 onConfigurationChanged（如果没有则新增）：
+
+```kotlin
+override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    updateLayoutOrientation()
+}
+```
+
+3.4 添加必要的导入（如果缺失）
+
+在文件顶部导入区域添加：
+
+```kotlin
+import android.content.res.Configuration
+import android.widget.LinearLayout
+```
+
 ---
 
-其他说明
+四、验证步骤
 
-· 不需要删除 GitHubApi.kt 中的 getBranchRef 接口定义，其他代码可能仍在使用（如 ActionsFragment 未用到则不影响），保留无碍。
-· 修改后横竖屏均可正常显示文件树。
-· 若 branch 变量名与其他作用域冲突，此处仅更换参数值，无其他影响。
-
----
-
-验证步骤（供测试用）
-
-1. 编译运行应用。
-2. 登录后选择一个仓库。
-3. 确保“Files”标签下的 ExpandableListView 能显示目录结构并可展开/点击。
-4. 旋转屏幕，目录树仍正常显示（无崩溃或空白）。
+1. 编译运行：确保无编译错误。
+2. 登录：使用有效的 GitHub Token。
+3. 选择一个仓库，进入 Files 标签页。
+4. 检查竖屏：目录树在上，文件预览在下，目录树应正常显示并可展开/点击。
+5. 旋转为横屏：布局应自动变为左右分屏（左侧目录树，右侧文件预览），两者平分宽度，顶部按钮栏紧凑显示在左上方。
+6. 点击文件：右侧应显示文件内容（文本文件可预览，二进制文件提示无法预览）。
+7. 旋转回竖屏：布局恢复正常上下排列。
 
 ---
 
-按上述改动操作即可完全修复目录树不显示的问题。
+✅ 总结
+
+以上修改解决了两个核心问题：
+
+1. API 调用优化：移除多余的 getBranchRef，直接使用分支名获取 Git Tree，避免 404 错误。
+2. 横竖屏自适应布局：动态调整根布局方向及子视图参数，确保目录树和预览区域在横屏时左右分屏，竖屏时上下分屏。
+
+请 Trae 按此大纲依次执行修改，完成后通知用户进行验证。
